@@ -12,7 +12,7 @@ Format your BALR vectors and dataset labels. This function will output a .csv to
 python scripts/format_data.py -label_path '/path/to/your/labels.csv' -data_path '/path/to/your/BALR/' -name 'DatasetName' -split 1
 
 # Step 2 (Optional)
-Based on the selected speech modality task, e.g., {label}, reduce BALR dimensionality via a frequentist method (Stepwise Linear Discriminat Analysis : 'slda') or a probabilistic method (Bayesian LR : 'bayes'). The methods are defined in the 'lib/ba_functions.py' file. This is an option as redudant features are removed prior to model training. A .csv of the selected binary attributes are exported to the 'features/{label}_{method}.csv' folder.
+Based on the selected speech modality task, e.g., {label}, reduce BALR dimensionality via a frequentist method (Stepwise Linear Discriminat Analysis : 'slda') or a probabilistic method (Bayesian LR : 'bayes'). The methods are defined in the 'lib/ba_functions.py' file. This is an option as redundant features are removed prior to model training. A .csv of the selected binary attributes are exported to the 'features/{label}_{method}.csv' folder.
 
 python scripts/feat_sel.py -method 'bayes' -label 'Range' -data_path '~/data/DatasetName_train_data.csv'
 
