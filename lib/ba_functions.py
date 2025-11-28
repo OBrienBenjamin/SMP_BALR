@@ -516,9 +516,9 @@ def test_dt(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0)
 
 # # # feature selection functions
 def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=1000):
-    project_root = os.path.dirname(os.path.dirname(__file__)) 
+    project_root = os.path.dirname(os.path.dirname(__file__))
     results_dir = os.path.join(project_root, "results")
-    
+
     _, n_features = X.shape
     if K is None:
         K = len(np.unique(Y))
@@ -535,32 +535,43 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
         approx = pm.fit(n=5000, method="advi")
         trace = approx.sample(draws=n_draws)
 
-    beta_post = trace.posterior["beta"].stack(draws=("chain", "draw")).values
+    # ---- Correct posterior stacking ----
+    beta_post = trace.posterior["beta"].stack(samples=("chain", "draw")).values
     if beta_post.ndim == 2:
-        beta_post = beta_post[:, np.newaxis, :]  # handle single-class case
+        beta_post = beta_post.T[:, :, np.newaxis]
+    n_samples, n_features_check, n_classes = beta_post.shape
+    assert n_features_check == n_features
 
-    prob_pos = (beta_post > 0).mean(axis=2)  # shape: (features, classes)
-    prob_any_class = 1 - np.prod(1 - prob_pos, axis=1)
+    # ---- Posterior probabilities ----
+    prob_pos = (beta_post > 0).mean(axis=0)      # (features, classes)
+    mean_beta = beta_post.mean(axis=0)
 
-    ranked_idx = np.argsort(prob_any_class)[::-1][:top_features]
+    # ---- Feature selection ----
+    chance_threshold = 1.0 / K
+    max_prob = prob_pos.max(axis=1)               # best class for each feature
+    ranked_idx = np.argsort(max_prob)[::-1]       # sort by strongest evidence
 
-    n_classes = beta_post.shape[1]
-    mean_beta = beta_post.mean(axis=2)
+    ranked_idx = ranked_idx[:top_features]
+
+    filtered_idx = [i for i in ranked_idx if max_prob[i] > chance_threshold]
+
     df_features = pd.DataFrame({
         "Feature": np.repeat(feature_names, n_classes),
         "Class": np.tile(np.arange(n_classes), n_features),
         "Probability": prob_pos.flatten(),
         "MeanBeta": mean_beta.flatten()
     })
-    df_features.to_csv(os.path.join(results_dir, f'{label}_bayes_feature_probs.csv'), index=False)
-    
-    top_feature_names = [feature_names[i] for i in ranked_idx]
-    top_probs = prob_any_class[ranked_idx]
+    df_features.to_csv(
+        os.path.join(results_dir, f'{label}_bayes_feature_probs.csv'),
+        index=False
+    )
+
     df_top = pd.DataFrame({
-        "Feature": top_feature_names,
-        "Probability": top_probs
+        "Feature": [feature_names[i] for i in filtered_idx],
+        "MaxClassProbability": max_prob[filtered_idx],
+        "ChanceThreshold": chance_threshold
     })
-    
+
     return df_top
 
 def sel_feat_slda(X, y, feature_names, p_thresh=0.05, workers=8, batch_size=16):
