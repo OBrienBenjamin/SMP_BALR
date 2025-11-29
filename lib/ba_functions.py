@@ -391,7 +391,7 @@ def test_mlp(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0
     results_dir = os.path.join(project_root, "results")
     
     mdl_filename = mdl_name + '.pth'
-    
+        
     X_test = torch.tensor(X, dtype=torch.float32)
     Y_test = torch.tensor(Y, dtype=torch.long)
 
@@ -516,9 +516,9 @@ def test_dt(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0)
 
 # # # feature selection functions
 def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=1000):
-    project_root = os.path.dirname(os.path.dirname(__file__))
+    project_root = os.path.dirname(os.path.dirname(__file__)) 
     results_dir = os.path.join(project_root, "results")
-
+    
     _, n_features = X.shape
     if K is None:
         K = len(np.unique(Y))
@@ -535,25 +535,21 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
         approx = pm.fit(n=5000, method="advi")
         trace = approx.sample(draws=n_draws)
 
-    # ---- Correct posterior stacking ----
-    beta_post = trace.posterior["beta"].stack(samples=("chain", "draw")).values
+    # -------------------------------
+    # YOUR ORIGINAL POSTERIOR HANDLING
+    # -------------------------------
+    beta_post = trace.posterior["beta"].stack(draws=("chain", "draw")).values
+
     if beta_post.ndim == 2:
-        beta_post = beta_post.T[:, :, np.newaxis]
-    n_samples, n_features_check, n_classes = beta_post.shape
-    assert n_features_check == n_features
+        beta_post = beta_post[:, np.newaxis, :]   # original code
 
-    # ---- Posterior probabilities ----
-    prob_pos = (beta_post > 0).mean(axis=0)      # (features, classes)
-    mean_beta = beta_post.mean(axis=0)
+    prob_pos = (beta_post > 0).mean(axis=2)       # (features, classes)
+    prob_any_class = 1 - np.prod(1 - prob_pos, axis=1)
 
-    # ---- Feature selection ----
-    chance_threshold = 1.0 / K
-    max_prob = prob_pos.max(axis=1)               # best class for each feature
-    ranked_idx = np.argsort(max_prob)[::-1]       # sort by strongest evidence
+    ranked_idx = np.argsort(prob_any_class)[::-1][:top_features]
 
-    ranked_idx = ranked_idx[:top_features]
-
-    filtered_idx = [i for i in ranked_idx if max_prob[i] > chance_threshold]
+    n_classes = beta_post.shape[1]
+    mean_beta = beta_post.mean(axis=2)
 
     df_features = pd.DataFrame({
         "Feature": np.repeat(feature_names, n_classes),
@@ -561,14 +557,19 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
         "Probability": prob_pos.flatten(),
         "MeanBeta": mean_beta.flatten()
     })
+
     df_features.to_csv(
         os.path.join(results_dir, f'{label}_bayes_feature_probs.csv'),
         index=False
     )
 
+    chance_threshold = 1.0 / K
+    max_prob = prob_pos.max(axis=1)
+    ranked_idx = np.argsort(max_prob)[::-1][:top_features]
+    filtered = [i for i in ranked_idx if max_prob[i] > chance_threshold]
     df_top = pd.DataFrame({
-        "Feature": [feature_names[i] for i in filtered_idx],
-        "MaxClassProbability": max_prob[filtered_idx],
+        "Feature": [feature_names[i] for i in filtered],
+        "MaxClassProbability": max_prob[filtered],
         "ChanceThreshold": chance_threshold
     })
 
@@ -579,7 +580,6 @@ def sel_feat_slda(X, y, feature_names, p_thresh=0.05, workers=8, batch_size=16):
     remaining = list(range(X.shape[1]))
     history = []
 
-    # Initialize parallel environment
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=initializer,
@@ -589,7 +589,6 @@ def sel_feat_slda(X, y, feature_names, p_thresh=0.05, workers=8, batch_size=16):
         while True:
             futures = {}
 
-            # Submit tasks in batches
             for batch in chunked(remaining, batch_size):
                 for idx in batch:
                     futures[executor.submit(evaluate_feature, idx, selected)] = idx
@@ -607,17 +606,14 @@ def sel_feat_slda(X, y, feature_names, p_thresh=0.05, workers=8, batch_size=16):
                     if p_val < p_thresh and lam < best[0]:
                         best = (lam, idx2, p_val)
 
-                # If we found a feature in this batch, stop early
                 if best[1] is not None:
                     break
 
             lam, feat_idx, p_val = best
 
-            # No more improvements
             if feat_idx is None:
                 break
 
-            # Store selected feature
             selected.append(feat_idx)
             remaining.remove(feat_idx)
 
