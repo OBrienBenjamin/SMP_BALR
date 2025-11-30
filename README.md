@@ -17,9 +17,9 @@ Based on the selected speech modality task, e.g., the string set for the _label_
 
 python scripts/feat_sel.py -method 'bayes' -label 'Range' -data_path '~/data/DatasetName_train_data.csv'
 
-An additional option is to reduce selected features further by exporting features common to the different labels and methods. The _include_ and _exclude_ flags accept lists of strings to include or exclude, respectively, in the title of .csv files in the 'features' directory. The _output_ flag accepts lists and should be written in the format {label}_all so as to be read when training models.
+An additional option is to reduce selected features further by exporting features common to the different labels and methods. The _include_ and _exclude_ flags accept lists of strings to include or exclude, respectively, in the title of .csv files in the 'features' directory. The _output_ flag accepts lists and should be written in the format {label}_common so as to be read when training models.
 
-python scripts/common_feat.py -include bayes slda -exclude None -output Range_all Language_all
+python scripts/common_feat.py -include Range Language -exclude None -output Range_common Language_common
 
 # Step 3
 Select a model (Multilayer perceptron : 'mlp'; Decision tree : 'dt') and train it. Different training methods are available and are described below. In addition a SHAP explainer is created based on the model. 
