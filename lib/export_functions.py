@@ -104,6 +104,14 @@ def export_shap_values(shap_values, X, Y, label_encoder, feature_names, mdl_name
         csv_path = os.path.join(results_dir, f"{mdl_name}_{class_label}_shap_summary.csv")
         ranking_df.to_csv(csv_path, index=False)
 
+def load_shapley_values(mdl_name, label):
+    project_root = os.path.dirname(os.path.dirname(__file__)) 
+    results_dir = os.path.join(project_root, "results")
+    
+    csv_path = os.path.join(results_dir, f"{mdl_name}_shap_values_class_{label}.csv")
+    df_shap = pd.read_csv(csv_path)    
+    return df_shap
+
 def print_global(shap_values, feature_names):
     global_importance = np.mean(np.abs(shap_values), axis=(0, 1))
 

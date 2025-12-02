@@ -11,7 +11,7 @@ sys.path.append(project_root)
 
 from lib.export_functions import print_global, export_shap_values, distribution_before_balance
 from lib.model_definitions import DeeperNeuNet, ModelWrapper
-from lib.plot_functions import save_plot_predictions, plot_shap_values
+from lib.plot_functions import save_plot_predictions, plot_shap_values, plot_shap_feature_across_classes
 
 import pickle
 
@@ -158,6 +158,34 @@ def detect_irrelevant_features(df, mdl_name = 'model'):
     
     return df_feat
 
+def collect_feats(include = None, exclude = None):
+    project_root = os.path.dirname(os.path.dirname(__file__)) 
+    feats_dir = os.path.join(project_root, "features")
+    
+    feature_sets = []
+    for file_name in os.listdir(feats_dir):
+        if not file_name.endswith('.csv'):
+            continue
+
+        if include and not any(inc in file_name for inc in include):
+            continue
+
+        if exclude and any(exc in file_name for exc in exclude):
+            continue
+
+        file_path = os.path.join(feats_dir, file_name)
+        df = pd.read_csv(file_path)
+
+        if 'Feature' in df.columns:
+            feature_sets.append(set(df['Feature'].dropna()))
+
+    if feature_sets:
+        common_features = set.intersection(*feature_sets)
+        return list(common_features)
+    else:
+        return []
+    
+    
 def load_feat(df, label, step = 'train', fs_method = None, mdl_name = 'model'):
     project_root = os.path.dirname(os.path.dirname(__file__)) 
     feats_dir = os.path.join(project_root, "features")
@@ -384,7 +412,7 @@ def train_dt(X, Y, class_weight_dict = {}, mdl_name = 'model'):
 # # # # # # # # # #  # # # # # 
 
 # # # model testing functions    
-def test_mlp(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0, num_classes=4, n_epochs = 100, batch_size = 32, learning_rate=0.001):
+def test_mlp(X, Y, feature_names, label_encoder, mdl_name = 'model', num_classes=4, n_epochs = 100, batch_size = 32, learning_rate=0.001):
     # # # I/O
     project_root = os.path.dirname(os.path.dirname(__file__)) 
     models_dir = os.path.join(project_root, "models")
@@ -432,37 +460,8 @@ def test_mlp(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0
 
     # # # export classification report, plots
     save_plot_predictions(all_labels, all_predictions, label_encoder, mdl_name)
-
-    # # # if explaining model
-    if explain:
-        print('Explaining model. . .')
-        explainer_path = os.path.join(models_dir, f"{mdl_name}_explainer.pkl")
-
-        with open(explainer_path, "rb") as file:
-            explainer = pickle.load(file)
-            
-        X_test_np = np.array(X_test)
-        Y_test_np = np.array(Y_test)
-        
-        idx = np.random.choice(len(X_test_np), size=50, replace=False)
-
-        X_sample = X_test_np[idx]
-        Y_sample = Y_test_np[idx]
-        
-        shap_values = explainer.shap_values(X_sample) # # # non-batch (works!)
-        # shap_values = batch_shap_values(explainer, X_test_np, batch_size=50) # haven't tried
-
-        print('Global importance')
-        print_global(shap_values, feature_names)
-        
-        export_shap_values(shap_values, X_sample, Y_sample, label_encoder, feature_names, mdl_name)
-
-        # plot_shap_dist(mdl_name) # # # does not function (maybe make it into another function)
-
-        # # # create typical SHAP plot for each emotion
-        plot_shap_values(shap_values, X_sample, Y_sample, label_encoder, feature_names, mdl_name)
-        
-def test_dt(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0):
+    
+def test_dt(X, Y, feature_names, label_encoder, mdl_name = 'model'):
     # # # I/O
     project_root = os.path.dirname(os.path.dirname(__file__)) 
     models_dir = os.path.join(project_root, "models")
@@ -491,26 +490,35 @@ def test_dt(X, Y, feature_names, label_encoder, mdl_name = 'model', explain = 0)
     # # # export classification report, plots
     save_plot_predictions(Y, y_pred, label_encoder, mdl_name)
 
-    # SHAP EXPLAINER
-    if explain:
-        print("Loading SHAP explainer…")
-        explainer_path = os.path.join(models_dir, f"{mdl_name}_explainer.pkl")
+# # # # # # # # # #  # # # # # 
 
-        with open(explainer_path, "rb") as f:
-            explainer = pickle.load(f)
+# # # explaining model
+def extract_shapley_values(X, Y, feature_names, label_encoder, features = [], mdl_name = 'model', N=200):
+    project_root = os.path.dirname(os.path.dirname(__file__)) 
+    models_dir = os.path.join(project_root, "models")
+    
+    print('Explaining model. . .')
+    explainer_path = os.path.join(models_dir, f"{mdl_name}_explainer.pkl")
 
-        print("Computing SHAP values…")
-        shap_values = explainer.shap_values(X)
+    with open(explainer_path, "rb") as file:
+        explainer = pickle.load(file)
+            
+    np.random.seed(42)
+    idx = np.random.choice(len(X), size=N, replace=False)
+    
+    X_sample = X[idx]
+    Y_sample = Y[idx]
+    
+    shap_values = explainer.shap_values(X_sample)
 
-        print('Global importance')
-        print_global(shap_values, feature_names)
-        
-        export_shap_values(shap_values, X, Y, label_encoder, feature_names, mdl_name)
-
-        # plot_shap_dist(mdl_name) # # # does not function (maybe make it into another function)
-
-        # # # create typical SHAP plot for each emotion
-        plot_shap_values(shap_values, X, Y, label_encoder, feature_names, mdl_name)
+    print('Global importance')
+    print_global(shap_values, feature_names)
+    
+    export_shap_values(shap_values, X_sample, Y_sample, label_encoder, feature_names, mdl_name)
+    plot_shap_values(shap_values, X_sample, Y_sample, label_encoder, feature_names, mdl_name)
+    
+    for feat in features:
+        plot_shap_feature_across_classes(shap_values, X_sample, Y_sample, label_encoder, feature_names, feat, mdl_name)
 
 # # # # # # # # # #  # # # # # 
 
@@ -535,9 +543,6 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
         approx = pm.fit(n=5000, method="advi")
         trace = approx.sample(draws=n_draws)
 
-    # -------------------------------
-    # YOUR ORIGINAL POSTERIOR HANDLING
-    # -------------------------------
     beta_post = trace.posterior["beta"].stack(draws=("chain", "draw")).values
 
     if beta_post.ndim == 2:
@@ -564,9 +569,12 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
     )
 
     chance_threshold = 1.0 / K
+    
     max_prob = prob_pos.max(axis=1)
     ranked_idx = np.argsort(max_prob)[::-1][:top_features]
+
     filtered = [i for i in ranked_idx if max_prob[i] > chance_threshold]
+    
     df_top = pd.DataFrame({
         "Feature": [feature_names[i] for i in filtered],
         "MaxClassProbability": max_prob[filtered],
@@ -574,6 +582,78 @@ def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=
     })
 
     return df_top
+
+# def sel_feat_bayes(X, Y, feature_names, label, K=None, top_features=50, n_draws=1000):
+#     project_root = os.path.dirname(os.path.dirname(__file__)) 
+#     results_dir = os.path.join(project_root, "results")
+
+#     _, n_features = X.shape
+#     if K is None:
+#         K = len(np.unique(Y))
+#     if top_features is None:
+#         top_features = n_features
+
+#     # --- Build Bayesian model ---
+#     with pm.Model() as model:
+#         beta = pm.Normal("beta", mu=0, sigma=0.5, shape=(n_features, K))
+#         intercept = pm.Normal("intercept", mu=0, sigma=1, shape=K)
+
+#         logits = pm.math.dot(X, beta) + intercept
+#         pm.Categorical("y_obs", logit_p=logits, observed=Y)
+
+#         approx = pm.fit(n=5000, method="advi")
+#         trace = approx.sample(draws=n_draws)
+
+#     # Original behavior (keep this exactly)
+#     beta_post = trace.posterior["beta"].stack(draws=("chain", "draw")).values
+
+#     if beta_post.ndim == 2:
+#         beta_post = beta_post[:, np.newaxis, :]   # original code: ensure (feat, 1, draws)
+
+#     sd_beta = beta_post.std(axis=2)  # shape (feat, class)
+
+#     # Global effect-size threshold τ (median posterior SD)
+#     tau = np.median(sd_beta)
+
+#     # Probability that |β| exceeds τ
+#     prob_strict_tau = (np.abs(beta_post) > tau).mean(axis=2)  # (feat, class)
+
+#     # Summaries
+#     feature_results = []
+#     for f_idx, f_name in enumerate(feature_names):
+#         for k in range(beta_post.shape[1]):
+#             feature_results.append({
+#                 "Feature": f_name,
+#                 "Class": k,
+#                 "Probability_Strict_Tau": prob_strict_tau[f_idx, k],
+#                 "Tau": tau
+#             })
+
+#     df_features = pd.DataFrame(feature_results)
+#     df_features.to_csv(
+#         os.path.join(results_dir, f'{label}_bayes_feature_probs.csv'),
+#         index=False
+#     )
+
+#     # Max probability across classes
+#     max_prob_tau = prob_strict_tau.max(axis=1)   # shape: (features,)
+
+#     # Rank by strongest maximum support
+#     ranked_idx = np.argsort(max_prob_tau)[::-1][:top_features]
+
+#     # Keep only features that beat chance threshold
+#     chance_threshold = 1.0 / K
+#     filtered = [i for i in ranked_idx if max_prob_tau[i] > chance_threshold]
+
+#     df_top = pd.DataFrame({
+#         "Feature": [feature_names[i] for i in filtered],
+#         "MaxClassProbability_Tau": max_prob_tau[filtered],
+#         "ChanceThreshold": chance_threshold,
+#         "Tau": tau
+#     })
+
+#     return df_top
+
 
 def sel_feat_slda(X, y, feature_names, p_thresh=0.05, workers=8, batch_size=16):
     selected = []
