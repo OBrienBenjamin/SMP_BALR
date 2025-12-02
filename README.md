@@ -5,7 +5,7 @@ The Speech Modality Presence in BALR speaker embeddings (SMP_BALR) toolkit is de
 
 
 # Step 0
-Extract BALR vectors from your dataset - see [https://gitlab.inria.fr/inria-defense/balr/]
+Extract BALR vectors from your dataset - **to be made available soon**
 
 # Step 1
 Format your BALR vectors and dataset labels. This function will output a .csv to your _data_ folder that includes all labels and BALR dimensions. Please examine the dataset provided in '~/data/' so that your labels are similarly formated. The _split_ flag is an option to split your dataset into 'Train' and 'Test' separate .csv files.
